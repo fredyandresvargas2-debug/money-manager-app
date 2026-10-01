@@ -1,0 +1,98 @@
+from kivy.app import App
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
+from kivy.uix.button import Button
+from kivy.uix.screenmanager import ScreenManager, Screen
+
+import database
+
+
+class LoginScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation='vertical', padding=30, spacing=10)
+
+        layout.add_widget(Label(text='Money Manager', font_size=28, bold=True))
+        self.username = TextInput(hint_text='Usuario')
+        self.password = TextInput(hint_text='Contraseña', password=True)
+        btn_login = Button(text='Iniciar sesión')
+        btn_register = Button(text='Registrar usuario')
+
+        btn_login.bind(on_press=self.login)
+        btn_register.bind(on_press=self.register)
+
+        layout.add_widget(self.username)
+        layout.add_widget(self.password)
+        layout.add_widget(btn_login)
+        layout.add_widget(btn_register)
+        self.add_widget(layout)
+
+    def login(self, instance):
+        user = database.login_user(self.username.text.strip(), self.password.text.strip())
+        if user:
+            self.manager.current = 'dashboard'
+            self.manager.get_screen('dashboard').set_user(user)
+        else:
+            self.manager.get_screen('dashboard').show_message('Credenciales inválidas')
+
+    def register(self, instance):
+        try:
+            database.register_user(self.username.text.strip(), self.password.text.strip())
+            self.manager.get_screen('dashboard').show_message('Usuario creado correctamente')
+        except ValueError as exc:
+            self.manager.get_screen('dashboard').show_message(str(exc))
+
+
+class DashboardScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.user = None
+        self.message = Label(text='')
+        self.layout = BoxLayout(orientation='vertical', padding=20, spacing=10)
+        self.summary = Label(text='')
+        self.transactions = Label(text='')
+
+        self.layout.add_widget(self.message)
+        self.layout.add_widget(self.summary)
+        self.layout.add_widget(self.transactions)
+        self.add_widget(self.layout)
+
+    def set_user(self, user):
+        self.user = user
+        self.refresh()
+
+    def refresh(self):
+        if not self.user:
+            return
+        summary = database.get_summary(self.user['id'])
+        transactions = database.get_transactions(self.user['id'])
+        lines = []
+        for item in transactions[:5]:
+            lines.append(f"{item['type']} | {item['category']} | ${item['amount']:.2f}")
+        self.summary.text = (
+            f"Ingresos: ${summary['income_total']:.2f}\n"
+            f"Gastos: ${summary['expense_total']:.2f}\n"
+            f"Balance: ${summary['balance']:.2f}"
+        )
+        self.transactions.text = "\n".join(lines) if lines else 'Sin transacciones'
+
+    def show_message(self, text):
+        self.message.text = text
+
+
+class MoneyManagerKivyApp(App):
+    def build(self):
+        database.init_db()
+        sm = ScreenManager()
+        sm.add_widget(LoginScreen(name='login'))
+        sm.add_widget(DashboardScreen(name='dashboard'))
+        return sm
+
+
+if __name__ == '__main__':
+    MoneyManagerKivyApp().run()
+
+
+# Nota: para ejecutar en un entorno real, asegúrate de tener Kivy instalado:
+# pip install kivy
